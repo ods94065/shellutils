@@ -1,0 +1,98 @@
+#!/usr/bin/env ruby
+require 'optparse'
+require 'fileutils'
+
+# Wraps a string weith ANSI terminal codes for the given color.
+# 
+# Valid colors: :black, :red, :green, :yellow,
+#               :blue, :magenta, :cyan, :white
+def colorize(s, color)
+  ansi_codes = { :black => 30, :red => 31, :green => 32, :yellow => 33,
+    :blue => 34, :magenta => 35, :cyan => 36, :white => 37 }
+  if ! ansi_codes.key? color
+    return s
+  else
+    code = ansi_codes[color]
+    return "\x1b[#{code}m#{s}\x1b[0m"
+  end
+end
+
+# Prints the status of the operation
+# (true for success, false for failure).
+def print_status(success)
+  ok = colorize("  OK  ", :green)
+  failed = colorize("FAILED", :red)
+  if success
+    return "[#{ok}]"
+  else
+    return "[#{failed}]"
+  end
+end
+
+# Copies path (relative) from from_dir to to_dir, creating destination
+# directories as necessary.
+#
+# Options:
+# * :verbose - print verbose output
+def backup(from_dir, to_dir, path, options)
+  abs_from = File.expand_path(File.join(from_dir, path))
+  abs_to = File.expand_path(File.join(to_dir, path))
+
+  begin
+    FileUtils.mkdir_p(File.dirname(abs_to))
+    FileUtils.cp(abs_from, abs_to)
+    if options[:verbose]
+      status = print_status(true)
+      puts "#{status} #{abs_from} => #{abs_to}"
+    end
+  rescue => e
+    $stderr.puts "Error: #{e}"
+    if options[:verbose]
+      status = print_status(false)
+      puts "#{status} #{abs_from} => #{abs_to}"
+    end
+    raise
+  end
+end
+
+options = { :verbose => false }
+
+OptionParser.new do |opts|
+  opts.banner = <<EOS
+Usage:
+  backinup [OPTIONS] FROM-DIR TO-DIR PATHS...
+  backinup [OPTIONS] FROM-DIR TO-DIR -
+
+Backs up files from one top-level directory to another.
+Paths may be specified on the command line, or if - is specified,
+they may be provided to standard input, one per line.
+
+All paths given must be relative to FROM-DIR.
+EOS
+  opts.separator ""
+  opts.separator "Options:"
+  opts.on_tail('-h', '--help', "Print help") do
+    puts opts
+    exit
+  end
+  opts.on('-v', '--verbose', "Run verbosely") do
+    options[:verbose] = true
+  end
+end.parse!
+
+from_dir = ARGV[0]
+to_dir = ARGV[1]
+if ARGV[2] == '-'
+  paths = $stdin.readlines
+else
+  paths = ARGV[2..-1]
+end
+
+paths.each do |path|
+  path.chomp!
+  begin
+    backup(from_dir, to_dir, path, options)
+  rescue => e
+    next
+  end
+end
